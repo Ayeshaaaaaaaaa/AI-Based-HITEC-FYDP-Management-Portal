@@ -1,0 +1,139 @@
+// import { NextApiRequest, NextApiResponse } from 'next';
+// import nodemailer from 'nodemailer';
+// import { MongoClient } from 'mongodb';
+// import bcrypt from 'bcrypt';
+// import { NextResponse } from 'next/server';
+// import { google } from 'googleapis';
+
+// const { OAuth2 } = google.auth;
+
+// export const runtime = 'nodejs';
+// const uri = process.env.MONGODB_URI;
+// const client = new MongoClient(uri);
+
+// // Set up the OAuth2 client
+// const oauth2Client = new OAuth2(
+//   process.env.CLIENT_ID,
+//   process.env.CLIENT_SECRET,
+//   "http://localhost:3000/api/auth/callback" // Redirect URI for OAuth2
+// );
+
+// // Function to get a valid access token or refresh it
+// const getValidAccessToken = async (userEmail) => {
+//   try {
+//     // Connect to MongoDB
+//     await client.connect();
+//     const db = client.db('ProjectSphere');
+//     const user = await db.collection('User').findOne({ email: userEmail });
+
+//     if (!user || !user.refreshToken) {
+//       throw new Error('User not found or refresh token  missing.');
+//     }
+
+//     // Check if the access token is still valid
+//     const now = Date.now();
+//     if (user.expiresAt && user.expiresAt > now) {
+//       return user.accessToken;
+//     }
+
+//     // If access token is expired, use refresh token to get a new access token
+//     oauth2Client.setCredentials({
+//       refresh_token: user.refreshToken,
+//     });
+
+//     const { token } = await oauth2Client.getAccessToken();
+//     if (!token) throw new Error('Failed to retrieve access token.');
+
+//     // Update the accessToken and expiration time in the DB
+//     await db.collection('signupRequests').updateOne(
+//       { email: userEmail },
+//       {
+//         $set: {
+//           accessToken: token,
+//           expiresAt: Date.now() + 3600 * 1000, // 1 hour
+//         },
+//       }
+//     );
+
+//     return token;
+//   } catch (error) {
+//     console.error('Error obtaining access token:', error);
+//     throw new Error('Failed to get access token.');
+//   } finally {
+//     await client.close();
+//   }
+// };
+
+// export const POST = async (req) => {
+//   try {
+//     const data = await req.json();
+//     console.log('Incoming request data:', data);
+
+//     // Validate required fields
+//     if (!data.userType || !data.username || !data.email || !data.password || !data.dept || !data.batch || !data.rollNo) {
+//       return NextResponse.json({ message: 'All fields are required.' }, { status: 400 });
+//     }
+
+//     // Hash the password
+//     const hashedPassword = await bcrypt.hash(data.password, 10);
+
+//     // Generate a unique verification token
+//     const verificationToken = Math.random().toString(36).substring(2);
+
+//     // Get a valid access token using the user's email
+//     const accessToken = await getValidAccessToken(data.email); // Pass the user's email here
+
+//     // Connect to MongoDB to retrieve the refresh token
+//     await client.connect();
+//     const db = client.db('ProjectSphere');
+//     const user = await db.collection('signupRequests').findOne({ email: data.email }); // Fetch refresh token for the provided email
+
+//     if (!user || !user.refreshToken) {
+//       return NextResponse.json({ message: 'User not found or refresh token is missing.' }, { status: 400 });
+//     }
+
+//     // Set up Nodemailer with OAuth2 credentials
+//     const transporter = nodemailer.createTransport({
+//       service: 'gmail',
+//       auth: {
+//         type: 'OAuth2',
+//         user: process.env.EMAIL_USER,
+//         clientId: process.env.CLIENT_ID,
+//         clientSecret: process.env.CLIENT_SECRET,
+//         refreshToken: user.refreshToken, // Fetch refresh token from the database
+//         accessToken, // Use the valid access token
+//       },
+//     });
+
+//     // Send verification email
+//     const verificationLink = `http://localhost:3000/verify-email?token=${verificationToken}&email=${encodeURIComponent(data.email)}`;
+//     await transporter.sendMail({
+//       from: process.env.EMAIL_USER,
+//       to: data.email,
+//       subject: 'Verify your email address',
+//       text: `Please click the link to verify your email: ${verificationLink}`,
+//     });
+
+//     // Insert signup request data into MongoDB
+//     await db.collection('signupRequests').insertOne({
+//       userType: data.userType,
+//       username: data.username,
+//       dept: data.dept,
+//       batch: data.batch,
+//       rollNo: data.rollNo,
+//       email: data.email,
+//       password: hashedPassword,
+//       verificationToken,
+//       createdAt: new Date(),
+//       expiresAt: new Date(Date.now() + 60 * 60 * 1000), // Set expiration to 1 hour
+//       emailVerified: false,
+//     });
+
+//     return NextResponse.json({ message: 'Verification email sent' }, { status: 200 });
+//   } catch (error) {
+//     console.error('Error during signup process:', error);
+//     return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+//   } finally {
+//     await client.close(); // Ensure the client is closed
+//   }
+// };
